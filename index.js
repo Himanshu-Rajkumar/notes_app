@@ -3,15 +3,16 @@ const app = express();
 const mongoose = require('mongoose')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt')
+const env=require('dotenv').config()
 
 
-const PORT = 8080;
+const PORT = process.env.PORT || 8080 ;
 // Middle ware
 app.use(express.json());
 
 
 // Connect mongoose to our Express server
-const connectdb = () => { mongoose.connect('mongodb://localhost:27017/') }
+const connectdb = () => { mongoose.connect(process.env.MONGOOSE_URL) }
 
 const userSchema = mongoose.Schema({
   name: { type: String, required: true },
@@ -79,7 +80,7 @@ app.post('/login', async (req, res) => {
   bcrypt.compare(password,user.password,async(err,result)=>{
     try {
       if(result){
-        var token=jwt.sign({UserId:user._id, userName:user.name},"masai");  // token generation
+        var token=jwt.sign({UserId:user._id, userName:user.name},process.env.JWT_SECRET);  // token generation
         return res.status(200).send({message:"Logged in successfully", token:token});
       }
       else{
