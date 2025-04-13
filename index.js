@@ -119,10 +119,10 @@ const authMiddleware = ((req, res, next) => {
 
 // report
 
-app.get('/report', authMiddleware, async (req, res) => {
+app.get('/',  async (req, res) => {
 
   try {
-    res.status(201).send('report send sucessfully')
+    res.status(201).send('Hello')
   } catch (error) {
     console.log({ error: error.message })
   }
@@ -130,7 +130,7 @@ app.get('/report', authMiddleware, async (req, res) => {
 
 
 //  POST Request
-app.post("/addNotes",authMiddleware, async (req, res) => {
+app.post("/addNote",authMiddleware, async (req, res) => {
   const {title,description,userId,userName} = req.body;
 
   try {
@@ -143,7 +143,7 @@ app.post("/addNotes",authMiddleware, async (req, res) => {
 
 
 // Put Request
-app.put("/updateNote/:id", async (req, res) => {
+app.put("/updateNote/:id",authMiddleware, async (req, res) => {
   const { id } = req.params;
   const updateNote = req.body;
 
@@ -164,7 +164,7 @@ app.put("/updateNote/:id", async (req, res) => {
 
 // Delet Request
 
-app.delete("/deleteNote/:id", async (req, res) => {
+app.delete("/deleteNote/:id",authMiddleware, async (req, res) => {
   const { id } = req.params;
 
   try {
