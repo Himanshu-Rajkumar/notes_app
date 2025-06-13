@@ -1,199 +1,178 @@
 const express = require('express');
 const app = express();
-const mongoose = require('mongoose')
-const jwt = require('jsonwebtoken')
-const bcrypt = require('bcrypt')
-const env=require('dotenv').config()
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const dotenv = require('dotenv').config();
 const cors = require('cors');
+
 app.use(cors());
-
-
-const PORT = process.env.PORT || 8080 ;
-// Middle ware
 app.use(express.json());
 
+const PORT = process.env.PORT || 8080;
 
-// Connect mongoose to our Express server
-const connectdb = () => { mongoose.connect(process.env.MONGOOSE_URL) }
+// ✅ DB Connection
+const connectdb = async () => {
+  try {
+    await mongoose.connect(process.env.MONGOOSE_URL, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log('✅ MongoDB connected');
+  } catch (err) {
+    console.error('❌ MongoDB connection failed:', err.message);
+    process.exit(1);
+  }
+};
 
+// ✅ User Schema
 const userSchema = mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, required: true }
-})
+});
 
-const userModel = mongoose.model("user", userSchema)
+const userModel = mongoose.model("user", userSchema);
 
-// Notes module
+// ✅ Note Schema
+const noteSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  userId: { type: String },
+  userName: { type: String },
+  date: { type: Date, default: Date.now }
+}, {
+  versionKey: false
+});
 
-const noteSchema= new mongoose.Schema({
-  title:{type:String ,require:true},
-  description:{type : String , require: true},
-  userId:{type:String},
-  userName:{type:String},
-  date:{type:Date , default:Date.now}
-},{
-  versionKey:false
-})
+const noteModel = mongoose.model("note", noteSchema);
 
-const noteModel =mongoose.model("note",noteSchema)
-
-
-// User registration
+// ✅ Register Route
 app.post('/register', async (req, res) => {
   const { name, role, email, password } = req.body;
-  const user = await userModel.findOne({ email });
 
   try {
+    const existingUser = await userModel.findOne({ email });
+    if (existingUser) return res.status(400).send('User is already registered');
 
-    if (user) {
-      return res.send('User is already registered')
-    }
-    else {
-      bcrypt.hash(password, 2, async (err, hashedPassword) => {
+    bcrypt.hash(password, 10, async (err, hashedPassword) => {
+      if (err) return res.status(500).send({ message: err.message });
 
-        const newUser = new userModel({
-          name,
-          email,
-          password: hashedPassword,
-          role,
-        })
-        await userModel.create(newUser);
-
-      })
-
-
-      return res.send("User registered sucessfully")
-    }
+      const newUser = new userModel({ name, email, password: hashedPassword, role });
+      await newUser.save();
+      return res.status(201).send("User registered successfully");
+    });
   } catch (error) {
-    return res.send({ message: error.message })
+    return res.status(500).send({ message: error.message });
   }
+});
 
-})
-
-// User Login
-
+// ✅ Login Route
 app.post('/login', async (req, res) => {
- const {email,password}=req.body;
- const user=await userModel.findOne({email});
-
- if(user){
-  bcrypt.compare(password,user.password,async(err,result)=>{
-    try {
-      if(result){
-        var token=jwt.sign({UserId:user._id, userName:user.name},process.env.JWT_SECRET);  // token generation
-        return res.status(200).send({message:"Logged in successfully", token:token});
-      }
-      else{
-        return res.status(400).send(err.message);
-      }
-      
-    } catch (error) {
-      return res.status(400).send({message: error.message});
-    }
-  })
- }
-})
-
-// middleware
-
-const authMiddleware = ((req, res, next) => {
-  const token = req.headers.authorisation;
-  jwt.verify(token, "masai", function (err, decoded) {
-    if (err) {
-      return res.status(500).send('You are not allowed to access it')
-    }
-    else {
-      req.body.UserId=decoded.UserId;
-      req.body.userName=decoded.userName;
-      next();
-
-    }
-  })
-})
-
-
-
-
-
-// report
-
-app.get('/',  async (req, res) => {
+  const { email, password } = req.body;
 
   try {
-    res.status(201).send('Hello')
+    const user = await userModel.findOne({ email });
+    if (!user) return res.status(401).send({ message: "User not found" });
+
+    bcrypt.compare(password, user.password, (err, result) => {
+      if (err) return res.status(500).send({ message: err.message });
+      if (!result) return res.status(401).send({ message: "Incorrect password" });
+
+      const token = jwt.sign(
+        { userId: user._id, userName: user.name },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      return res.status(200).send({ message: "Logged in successfully", token });
+    });
   } catch (error) {
-    console.log({ error: error.message })
+    return res.status(500).send({ message: error.message });
   }
-})
+});
 
+// ✅ Auth Middleware
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization;
 
-//  POST Request
-app.post("/addNote",authMiddleware, async (req, res) => {
-  const {title,description,userId,userName} = req.body;
+  if (!token) return res.status(401).send('Access denied: No token provided');
 
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).send('Invalid or expired token');
+
+    req.body.userId = decoded.userId;
+    req.body.userName = decoded.userName;
+    next();
+  });
+};
+
+// ✅ Get Notes
+app.get("/myNotes", authMiddleware, async (req, res) => {
   try {
-    await noteModel.create({title,description,userId,userName});
-    res.status(200).send("notes added successfully");
+    const notes = await noteModel.find({ userId: req.body.userId });
+    res.status(200).send(notes);
   } catch (error) {
     res.status(500).send({ message: error.message });
   }
 });
 
+// ✅ Add Note
+app.post("/addNote", authMiddleware, async (req, res) => {
+  const { title, description, userId, userName } = req.body;
 
-// Put Request
-app.put("/updateNote/:id",authMiddleware, async (req, res) => {
+  try {
+    await noteModel.create({ title, description, userId, userName });
+    res.status(201).send("Note added successfully");
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+// ✅ Update Note
+app.put("/updateNote/:id", authMiddleware, async (req, res) => {
   const { id } = req.params;
   const updateNote = req.body;
+  const loggedInUserId = req.body.userId;
 
   try {
-    const update = await noteModel.findByIdAndUpdate(id, updateNote, {
-      new: true, // Return updated user
-    });
+    const note = await noteModel.findById(id);
+    if (!note) return res.status(404).send({ message: "Note not found" });
 
-    if (!updateNote) {
-      return res.status(404).send({ message: "User not found" });
+    if (note.userId !== loggedInUserId) {
+      return res.status(403).send({ message: "You are not authorized to update this note" });
     }
 
-    res.status(200).send({ message: "Note updated", note: updateNote });
+    const updated = await noteModel.findByIdAndUpdate(id, updateNote, { new: true });
+    return res.status(200).send({ message: "Note updated", note: updated });
   } catch (error) {
-    res.status(500).send({ message: error.message });
+    return res.status(500).send({ message: error.message });
   }
 });
 
-// Delet Request
-
-app.delete("/deleteNote/:id",authMiddleware, async (req, res) => {
+// ✅ Delete Note
+app.delete("/deleteNote/:id", authMiddleware, async (req, res) => {
   const { id } = req.params;
+  const loggedInUserId = req.body.userId;
 
   try {
-    const deleteNote = await noteModel.findByIdAndDelete(id);
+    const note = await noteModel.findById(id);
+    if (!note) return res.status(404).send({ message: "Note not found" });
 
-    if (!deleteNote) {
-      return res.status(404).send({ message: "note not found" });
+    if (note.userId !== loggedInUserId) {
+      return res.status(403).send({ message: "You are not authorized to delete this note" });
     }
 
-    res.status(200).send({ message: "note deleted successfully" });
+    await noteModel.findByIdAndDelete(id);
+    res.status(200).send({ message: "Note deleted successfully" });
   } catch (error) {
     res.status(500).send({ message: error.message });
   }
 });
 
-
-
-
-
+// ✅ Start Server
 app.listen(PORT, async () => {
-  try {
-    await connectdb()
-    console.log(`Server running on the port ${PORT}`)
-    console.log('Connected to database')
-  } catch (error) {
-    console.error(error)
-
-  }
-
-})
-
-// 
+  await connectdb();
+  console.log(`🚀 Server running on port ${PORT}`);
+});
