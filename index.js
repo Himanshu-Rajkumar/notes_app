@@ -108,6 +108,12 @@ const authMiddleware = (req, res, next) => {
   });
 };
 
+// Get 
+
+app.get('/',(req,res)=>{
+  res.send('Hello World')
+})
+
 // ✅ Get Notes
 app.get("/myNotes", authMiddleware, async (req, res) => {
   try {
