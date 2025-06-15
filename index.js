@@ -111,7 +111,7 @@ const authMiddleware = (req, res, next) => {
 // Get 
 
 app.get('/',(req,res)=>{
-  res.send('Hello World')
+  res.send('Hello World Raj')
 })
 
 // ✅ Get Notes
