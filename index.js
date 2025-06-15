@@ -6,7 +6,10 @@ const bcrypt = require('bcrypt');
 const dotenv = require('dotenv').config();
 const cors = require('cors');
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // Allow Vite frontend to access
+  credentials: true
+}));
 app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
