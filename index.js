@@ -6,10 +6,11 @@ const bcrypt = require('bcrypt');
 const dotenv = require('dotenv').config();
 const cors = require('cors');
 
+
 app.use(cors({
-  origin: 'http://localhost:5173', // Allow Vite frontend to access
-  credentials: true
+  origin: '*'
 }));
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
@@ -98,7 +99,8 @@ app.post('/login', async (req, res) => {
 
 // ✅ Auth Middleware
 const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization;
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) return res.status(401).send('Access denied: No token provided');
 
@@ -123,6 +125,7 @@ app.get("/myNotes", authMiddleware, async (req, res) => {
     const notes = await noteModel.find({ userId: req.body.userId });
     res.status(200).send(notes);
   } catch (error) {
+    console.error("MyNotes Error:", error); 
     res.status(500).send({ message: error.message });
   }
 });
